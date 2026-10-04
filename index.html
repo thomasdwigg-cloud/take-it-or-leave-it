@@ -971,23 +971,23 @@ function leaderboardRows(hist = getHistory().filter(h => h.band === band)) {
     if (won >= h.R - 1) a.finals++;
   }));
   return Object.values(agg).map(a => ({ ...a, avg: a.prog / a.played }))
-    .sort((x, y) => y.titles - x.titles || y.avg - x.avg || y.finals - x.finals || y.played - x.played);
+    .sort((x, y) => y.avg - x.avg || y.titles - x.titles || y.finals - x.finals || y.played - x.played);
 }
 function renderStats() {
   const hist = getHistory().filter(h => h.band === band);
   const albumOf = Object.fromEntries(SONGS.map(s => [s.title, s]));
   const rows = leaderboardRows(hist);
   $("statsNote").textContent = hist.length
-    ? `Built from ${hist.length} finished bracket${hist.length > 1 ? "s" : ""} of ${BANDS[band].name} songs on this device. Ranked by titles won, then by how far a song usually gets.`
+    ? `Built from ${hist.length} finished bracket${hist.length > 1 ? "s" : ""} of ${BANDS[band].name} songs on this device. Ranked by how far each song usually gets through a bracket.`
     : "";
   if (!hist.length) {
     $("board").innerHTML = `<div class="empty">Finish a bracket and your results show up here. Over time, the songs you keep picking rise to the top.</div>`;
   } else {
     const shown = showAll ? rows : rows.slice(0, 15);
-    $("board").innerHTML = `<table class="board"><thead><tr><th>#</th><th>Song</th><th class="num">Titles</th><th class="num">Finals</th><th>Usually gets</th><th class="num">Brackets</th></tr></thead><tbody>` +
+    $("board").innerHTML = `<table class="board"><thead><tr><th>#</th><th>Song</th><th>Usually gets</th><th class="num">Titles</th><th class="num">Finals</th><th class="num">Brackets</th></tr></thead><tbody>` +
       shown.map((r, i) => {
         const s = albumOf[r.t], pct = Math.round(r.avg * 100);
-        return `<tr class="${i < 3 && r.titles ? "top" : ""}"><td class="rk">${i + 1}</td><td class="song-cell">${esc(r.t)}${s ? `<small>${esc(s.album)}</small>` : ""}</td><td class="num">${r.titles}</td><td class="num">${r.finals}</td><td><div class="prog" title="${pct}% of the way through the bracket on average"><i><b style="width:${pct}%"></b></i><span>${pct}%</span></div></td><td class="num">${r.played}</td></tr>`;
+        return `<tr class="${i < 3 ? "top" : ""}"><td class="rk">${i + 1}</td><td class="song-cell">${esc(r.t)}${s ? `<small>${esc(s.album)}</small>` : ""}</td><td><div class="prog" title="${pct}% of the way through the bracket on average"><i><b style="width:${pct}%"></b></i><span>${pct}%</span></div></td><td class="num">${r.titles}</td><td class="num">${r.finals}</td><td class="num">${r.played}</td></tr>`;
       }).join("") + `</tbody></table>`;
   }
   // Actions
