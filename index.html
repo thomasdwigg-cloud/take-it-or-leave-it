@@ -73,7 +73,6 @@ h1 { font-family: var(--f-marker); font-weight: 400; font-size: clamp(2.2rem, 7v
 .card::before { content: ""; position: absolute; top: -10px; left: 50%; width: 96px; height: 26px; margin-left: -48px; background: var(--tape); opacity: .85; transform: rotate(-3deg); }
 .card .tag { font-family: var(--f-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .card .song { font-family: var(--f-marker); font-size: clamp(1.7rem, 4.4vw, 2.6rem); line-height: 1.05; text-wrap: balance; overflow-wrap: anywhere; }
-.card .vibe { font-family: var(--f-mono); font-size: 12px; color: var(--accent); margin-top: -8px; }
 .card .album { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; border-top: 1.5px dashed var(--line); padding-top: 12px; }
 .card .album span:last-child { font-family: var(--f-mono); font-weight: 400; color: var(--muted); }
 .card.out { animation: cut .35s ease forwards; }
@@ -546,7 +545,7 @@ function undo() {
 
 function fillCard(el, id) {
   const s = byId[id];
-  el.innerHTML = `<div class="tag">${esc(s.album)}</div><div class="song">${esc(s.title)}</div>${styleOf(s.title) ? `<div class="vibe">${styleOf(s.title)}</div>` : ""}<div class="album"><span>${s.aid === "bs" ? "Rarity" : "Track " + (Number(s.id.replace(/\D/g, "")) + 1)}</span><span>${s.year}</span></div>`;
+  el.innerHTML = `<div class="tag">${esc(s.album)}</div><div class="song">${esc(s.title)}</div><div class="album"><span>${s.aid === "bs" ? "Rarity" : "Track " + (Number(s.id.replace(/\D/g, "")) + 1)}</span><span>${s.year}</span></div>`;
   el.setAttribute("aria-label", `Advance ${s.title}, from ${s.album}`);
 }
 
@@ -732,25 +731,6 @@ $("undo").onclick = undo;
 $("restart").onclick = () => newBracket(S.on);
 $("smartDraw").onclick = () => newBracket(S.on, S.size, true);
 
-// Smart order: songs from the same album (or the nearest era) sit next to each other,
-// and within an album, songs you rate similarly are neighbours, so each first-round
-// match pits two similar songs against each other. Later rounds stay similar too.
-// Thresholds for the style words, taken across every song of every band.
-const SOUND_PCT = (() => {
-  const all = Object.values(BANDS).flatMap(b => Object.values(b.sound || {}));
-  const pct = (i, q) => { const v = all.map(f => f[i]).sort((a, b) => a - b); return v[Math.floor(q * (v.length - 1))]; };
-  return { loudHi: pct(1, .66), loudLo: pct(1, .33), brightHi: pct(2, .66), brightLo: pct(2, .33), punchHi: pct(3, .66) };
-})();
-function styleOf(title) {
-  const f = SOUND[title]; if (!f) return "";
-  const [bpm, loud, bright, punch] = f, P = SOUND_PCT;
-  const words = [loud >= P.loudHi ? "loud" : loud <= P.loudLo ? "quiet" : "mid-energy"];
-  if (punch >= P.punchHi) words.push("punchy");
-  else if (bright >= P.brightHi) words.push("bright");
-  else if (bright <= P.brightLo) words.push("mellow");
-  const txt = words.join(" & ");
-  return `≈${bpm} BPM · ${txt[0].toUpperCase() + txt.slice(1)}`;
-}
 // Smart order: chain songs so each one sits next to the song that sounds most like it
 // (tempo, loudness, brightness, punch), nudged by album and by how you rate them.
 // Pairing neighbours means similar songs meet in round one, and nearby matches stay similar later on.
