@@ -127,6 +127,40 @@ kbd { font-family: var(--f-mono); font-size: 12px; border: 1px solid var(--line)
 .mrow select.filled { border-color: var(--ink); }
 .mrow select:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 
+/* Leaderboard + history */
+.stats { display: grid; gap: 12px; }
+.stats-note { margin: -6px 0 0; color: var(--muted); font-size: 14px; max-width: 70ch; }
+.stats-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
+.stats-actions .warn { color: var(--cut); font-weight: 600; }
+.board-wrap { overflow-x: auto; }
+.board { width: 100%; border-collapse: collapse; background: var(--paper); box-shadow: var(--shadow); border-radius: 3px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.board th { text-align: left; font-family: var(--f-mono); font-weight: 500; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1.5px solid var(--line); white-space: nowrap; }
+.board td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.board tr:last-child td { border-bottom: none; }
+.board .rk { font-family: var(--f-mono); color: var(--muted); width: 2.5em; }
+.board .song-cell { font-weight: 700; min-width: 160px; }
+.board .song-cell small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.board .num { text-align: right; white-space: nowrap; }
+.board tr.top td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.prog { display: flex; align-items: center; gap: 8px; min-width: 130px; }
+.prog i { flex: 1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; display: block; }
+.prog i b { display: block; height: 100%; background: var(--accent); }
+.prog span { font-family: var(--f-mono); font-size: 12px; width: 3em; text-align: right; }
+.empty { background: var(--paper); border: 1.5px dashed var(--line); border-radius: 3px; padding: 22px; color: var(--muted); text-align: center; }
+.hist-title { margin: 14px 0 0; font-family: var(--f-marker); font-weight: 400; font-size: 1.4rem; }
+.hist { display: grid; gap: 10px; }
+.hist details { background: var(--paper); border: 1px solid var(--line); border-radius: 3px; }
+.hist summary { cursor: pointer; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
+.hist summary b { font-family: var(--f-marker); font-weight: 400; font-size: 1.1rem; }
+.hist summary span { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.tiers { display: grid; gap: 6px; padding: 0 14px 14px; }
+.tier { display: grid; grid-template-columns: 10.5em 1fr; gap: 10px; align-items: start; }
+.tier-l { font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--paper); background: var(--ink); border-radius: 3px; padding: 6px 8px; text-align: center; }
+.tier-l.t0 { background: var(--accent); }
+.tier-songs { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+.tier-songs span { font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
+.saved-note { font-size: 13px; }
+
 /* Bracket */
 .bracket-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px; margin-bottom: 14px; }
 .bracket-head h2 { margin: 0; font-family: var(--f-marker); font-weight: 400; font-size: 1.7rem; }
@@ -212,6 +246,7 @@ button.row:hover .t { color: var(--accent); }
     <div class="eyebrow">Champion</div>
     <div class="song" id="winSong"></div>
     <p id="winAlbum"></p>
+    <p class="saved-note">Saved to your leaderboard below.</p>
     <button class="btn primary" id="again" type="button">Draw a new bracket</button>
   </section>
 
@@ -247,6 +282,17 @@ button.row:hover .t { color: var(--accent); }
       <div class="tabs" id="tabs" role="tablist"></div>
     </div>
     <div class="bracket" id="bracket"></div>
+  </section>
+
+  <section class="stats" id="statsSec">
+    <div class="bracket-head">
+      <h2>Your leaderboard</h2>
+      <div class="stats-actions" id="statsActions"></div>
+    </div>
+    <p class="stats-note" id="statsNote"></p>
+    <div class="board-wrap" id="board"></div>
+    <h3 class="hist-title" id="histTitle" hidden>Your finished brackets</h3>
+    <div class="hist" id="history"></div>
   </section>
   </div>
 </div>
@@ -469,6 +515,7 @@ function pick(side) {
 }
 function undo() {
   const key = S.hist.pop(); if (!key) return;
+  if (S.recorded) { removeRecord(S.recorded); S.recorded = null; }
   delete S.w[key]; view = null; save(); stopAudio(); render();
 }
 
@@ -528,7 +575,8 @@ function render() {
     $("winSong").textContent = champ.title;
     $("winAlbum").textContent = `${champ.album} · ${champ.year}. Beat ${ru.title} in the final.`;
   }
-  renderTabs(); renderBracket();
+  if (done && !S.recorded) recordResult();
+  renderTabs(); renderBracket(); renderStats();
 }
 
 function tabFor() {
@@ -701,6 +749,8 @@ function showMenu() {
       const done = Object.keys(saved.w).length, real = saved.seed.filter(Boolean).length;
       status = done >= real - 1 && done > 0 && real > 1 ? "Bracket finished · start a new one inside" : done ? `Bracket in progress · ${done} of ${real - 1} picks made` : status;
     }
+    const n = getHistory().filter(h => h.band === k).length;
+    if (n) status += ` · ${n} bracket${n > 1 ? "s" : ""} on your leaderboard`;
     $("status-" + k).textContent = status;
   });
   band = null;
@@ -711,7 +761,7 @@ $("changeBand").onclick = () => { closeBuilder(false); showMenu(); };
 let draft = null;
 const B_SIZES = [4, 8, 16, 32, 64, 128];
 function showArena(show) {
-  ["setup", "bar", "keys", "bracketSec", "openBuilder"].forEach(id => $(id).hidden = !show);
+  ["setup", "bar", "keys", "bracketSec", "statsSec", "openBuilder"].forEach(id => $(id).hidden = !show);
   if (!show) { $("play").hidden = true; $("winner").hidden = true; }
   $("builder").hidden = show;
 }
@@ -792,6 +842,79 @@ $("bStart").onclick = () => {
   closeBuilder(); window.scrollTo(0, 0);
 };
 $("openBuilder").onclick = openBuilder;
+
+// History: every finished bracket is saved in this browser as how far each song got.
+const HKEY = "tiol-history-v1";
+function getHistory() { try { return JSON.parse(localStorage.getItem(HKEY)) || []; } catch (e) { return []; } }
+function setHistory(h) { try { localStorage.setItem(HKEY, JSON.stringify(h)); } catch (e) {} }
+function recordResult() {
+  const res = {};   // title -> rounds won (byes count as advancing)
+  S.seed.forEach(id => { if (id) res[byId[id].title] = 0; });
+  B.rounds.forEach(round => round.forEach(x => { if (x.w) res[byId[x.w].title]++; }));
+  const rec = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), band, at: Date.now(), R: B.R, n: B.real, custom: !!S.custom, res };
+  const h = getHistory(); h.push(rec); setHistory(h);
+  S.recorded = rec.id; save();
+}
+function removeRecord(id) { setHistory(getHistory().filter(h => h.id !== id)); }
+
+let showAll = false, confirmClear = false;
+function renderStats() {
+  const hist = getHistory().filter(h => h.band === band);
+  const albumOf = Object.fromEntries(SONGS.map(s => [s.title, s]));
+  // Leaderboard: titles, finals, average progress (how far through the bracket a song gets)
+  const agg = {};
+  hist.forEach(h => Object.entries(h.res).forEach(([t, won]) => {
+    const a = agg[t] || (agg[t] = { t, played: 0, titles: 0, finals: 0, prog: 0 });
+    a.played++; a.prog += won / h.R;
+    if (won === h.R) a.titles++;
+    if (won >= h.R - 1) a.finals++;
+  }));
+  const rows = Object.values(agg).map(a => ({ ...a, avg: a.prog / a.played }))
+    .sort((x, y) => y.titles - x.titles || y.avg - x.avg || y.finals - x.finals || y.played - x.played);
+  $("statsNote").textContent = hist.length
+    ? `Built from ${hist.length} finished bracket${hist.length > 1 ? "s" : ""} of ${BANDS[band].name} songs on this device. Ranked by titles won, then by how far a song usually gets.`
+    : "";
+  if (!hist.length) {
+    $("board").innerHTML = `<div class="empty">Finish a bracket and your results show up here. Over time, the songs you keep picking rise to the top.</div>`;
+  } else {
+    const shown = showAll ? rows : rows.slice(0, 15);
+    $("board").innerHTML = `<table class="board"><thead><tr><th>#</th><th>Song</th><th class="num">Titles</th><th class="num">Finals</th><th>Usually gets</th><th class="num">Brackets</th></tr></thead><tbody>` +
+      shown.map((r, i) => {
+        const s = albumOf[r.t], pct = Math.round(r.avg * 100);
+        return `<tr class="${i < 3 && r.titles ? "top" : ""}"><td class="rk">${i + 1}</td><td class="song-cell">${esc(r.t)}${s ? `<small>${esc(s.album)}</small>` : ""}</td><td class="num">${r.titles}</td><td class="num">${r.finals}</td><td><div class="prog" title="${pct}% of the way through the bracket on average"><i><b style="width:${pct}%"></b></i><span>${pct}%</span></div></td><td class="num">${r.played}</td></tr>`;
+      }).join("") + `</tbody></table>`;
+  }
+  // Actions
+  const act = $("statsActions"); act.innerHTML = "";
+  const btn = (label, fn, cls = "btn") => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = label; b.onclick = fn; act.appendChild(b); };
+  if (rows.length > 15) btn(showAll ? "Show top 15" : `Show all ${rows.length}`, () => { showAll = !showAll; renderStats(); });
+  if (hist.length) {
+    if (!confirmClear) btn("Clear this band's history", () => { confirmClear = true; renderStats(); });
+    else {
+      const w = document.createElement("span"); w.className = "warn"; w.textContent = `Delete ${hist.length} saved bracket${hist.length > 1 ? "s" : ""}?`; act.appendChild(w);
+      btn("Yes, delete", () => { setHistory(getHistory().filter(h => h.band !== band)); if (S.recorded) { S.recorded = "cleared"; save(); } confirmClear = false; renderStats(); }, "btn primary");
+      btn("Keep them", () => { confirmClear = false; renderStats(); });
+    }
+  }
+  // Each finished bracket as a tier list
+  $("histTitle").hidden = !hist.length;
+  $("history").innerHTML = hist.slice().reverse().map(h => {
+    const tiers = {};
+    Object.entries(h.res).forEach(([t, won]) => { const k = h.R - won; (tiers[k] || (tiers[k] = [])).push(t); });
+    const champ = (tiers[0] || [])[0] || "";
+    const date = new Date(h.at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    const levels = Object.keys(tiers).map(Number).sort((a, b) => a - b);
+    return `<details><summary><b>${esc(champ)}</b><span>${date} · ${h.n} songs${h.custom ? " · your own bracket" : ""}</span></summary><div class="tiers">` +
+      levels.map(k => `<div class="tier"><div class="tier-l t${k}">${k === 0 ? "Champion" : k === 1 ? "Runner-up" : "Out in " + roundLabelFor(h, k)}</div><div class="tier-songs">${tiers[k].map(t => `<span>${esc(t)}</span>`).join("")}</div></div>`).join("") +
+      `</div></details>`;
+  }).join("");
+}
+// Name of the round a song was knocked out in: k rounds from the end.
+function roundLabelFor(h, k) {
+  const teams = 2 ** k;
+  if (k === h.R && h.n < 2 ** h.R && teams > 8) return "opening round";
+  return teams === 4 ? "Final Four" : teams === 8 ? "Elite Eight" : teams === 16 ? "Sweet 16" : `Round of ${teams}`;
+}
 showMenu();
 </script>
 </body>
