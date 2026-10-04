@@ -111,7 +111,21 @@ kbd { font-family: var(--f-mono); font-size: 12px; border: 1px solid var(--line)
 .band-status { font-family: var(--f-mono); font-size: 11px; color: var(--accent); border-top: 1.5px dashed var(--line); padding-top: 10px; margin-top: auto; }
 .game { display: grid; gap: 28px; }
 .game > * { min-width: 0; }
-.gamebar { display: flex; justify-content: flex-start; margin-top: -12px; }
+.gamebar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; margin-top: -12px; }
+.builder { display: grid; gap: 18px; }
+.builder-head h2 { margin: 0 0 4px; font-family: var(--f-marker); font-weight: 400; font-size: 1.9rem; }
+.builder-head p { margin: 0; color: var(--muted); max-width: 62ch; }
+.builder-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.builder-actions .count { margin-right: auto; }
+.btn.primary:disabled { opacity: .35; }
+.matches { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.region-h { grid-column: 1 / -1; font-family: var(--f-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-top: 8px; }
+.mrow { background: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 10px 12px 12px; display: grid; gap: 6px; min-width: 0; }
+.mrow .mlabel { font-family: var(--f-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.mrow .mvs { font-family: var(--f-marker); color: var(--cut); font-size: 13px; text-align: center; line-height: 1; }
+.mrow select { width: 100%; min-width: 0; font: 600 14px/1.2 var(--f-ui); padding: 8px; border-radius: 3px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); }
+.mrow select.filled { border-color: var(--ink); }
+.mrow select:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
 
 /* Bracket */
 .bracket-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px; margin-bottom: 14px; }
@@ -167,9 +181,9 @@ button.row:hover .t { color: var(--accent); }
   <section class="menu" id="menu" aria-label="Pick a band"></section>
 
   <div class="game" id="game" hidden>
-  <div class="gamebar"><button class="btn" id="changeBand" type="button">← Change band</button></div>
+  <div class="gamebar"><button class="btn" id="changeBand" type="button">← Change band</button><button class="btn primary" id="openBuilder" type="button">Build your own bracket</button></div>
 
-  <section aria-label="Albums in play" style="display:grid;gap:8px">
+  <section id="setup" aria-label="Albums in play" style="display:grid;gap:8px">
     <div class="albums" id="albums"></div>
     <div class="sizes"><span class="sizes-label">Songs in bracket</span><div class="albums" id="sizes"></div></div>
     <p class="setup-note">Songs are picked at random from the albums you have on. Changing albums or bracket size draws a new bracket.</p>
@@ -201,7 +215,7 @@ button.row:hover .t { color: var(--accent); }
     <button class="btn primary" id="again" type="button">Draw a new bracket</button>
   </section>
 
-  <div class="bar">
+  <div class="bar" id="bar">
     <div class="count"><strong id="left">0</strong> songs still alive</div>
     <div class="meter" aria-hidden="true"><i id="meter"></i></div>
     <div class="actions">
@@ -209,9 +223,25 @@ button.row:hover .t { color: var(--accent); }
       <button class="btn" id="restart" type="button">Redraw bracket</button>
     </div>
   </div>
-  <div class="keys">Keyboard: <kbd>←</kbd> left song, <kbd>→</kbd> right song, <kbd>P</kbd> play / stop the music, <kbd>Z</kbd> undo. You can also click a name in the highlighted bracket match.</div>
+  <div class="keys" id="keys">Keyboard: <kbd>←</kbd> left song, <kbd>→</kbd> right song, <kbd>P</kbd> play / stop the music, <kbd>Z</kbd> undo. You can also click a name in the highlighted bracket match.</div>
 
-  <section>
+  <section class="builder" id="builder" hidden>
+    <div class="builder-head">
+      <h2>Build your own bracket</h2>
+      <p>Choose which songs face each other in the first round. Each song can only be used once. Fill every spot, then start.</p>
+    </div>
+    <div class="sizes"><span class="sizes-label">Songs in bracket</span><div class="albums" id="bSizes"></div></div>
+    <div class="builder-actions">
+      <span class="count" id="bCount"></span>
+      <button class="btn" id="bFill" type="button">Fill empty spots randomly</button>
+      <button class="btn" id="bClear" type="button">Clear all</button>
+      <button class="btn" id="bCancel" type="button">Cancel</button>
+      <button class="btn primary" id="bStart" type="button">Start this bracket</button>
+    </div>
+    <div class="matches" id="bMatches"></div>
+  </section>
+
+  <section id="bracketSec">
     <div class="bracket-head">
       <h2>The bracket</h2>
       <div class="tabs" id="tabs" role="tablist"></div>
@@ -489,7 +519,7 @@ function render() {
     const reg = regionOf(c);
     const roundMatches = B.rounds[c.r].filter(x => !x.bye);
     const idx = roundMatches.indexOf(c) + 1;
-    $("roundLabel").innerHTML = `<b>${roundName(c.r)}</b>${reg === "ff" || B.regions === 1 ? "" : `<span>${REGIONS[reg]} region</span>`}<span>Match ${idx} of ${roundMatches.length}</span>`;
+    $("roundLabel").innerHTML = `<b>${roundName(c.r)}</b>${reg === "ff" || B.regions === 1 ? "" : `<span>${REGIONS[reg]} region</span>`}<span>Match ${idx} of ${roundMatches.length}</span>${S.custom ? "<span>Your own bracket</span>" : ""}`;
     fillCard($("cardA"), c.a);
     fillCard($("cardB"), c.b);
     if (typeof updatePlayUI === "function") updatePlayUI();
@@ -629,7 +659,7 @@ $("undo").onclick = undo;
 $("restart").onclick = () => newBracket(S.on);
 $("again").onclick = () => newBracket(S.on);
 document.addEventListener("keydown", e => {
-  if (e.metaKey || e.ctrlKey || e.altKey || !band) return;
+  if (e.metaKey || e.ctrlKey || e.altKey || !band || !$("builder").hidden) return;
   if (e.key === "ArrowLeft") pick(0);
   else if (e.key === "ArrowRight") pick(1);
   else if (e.key.toLowerCase() === "z") undo();
@@ -637,6 +667,7 @@ document.addEventListener("keydown", e => {
 });
 
 function startBand(k) {
+  if (!$("builder").hidden) showArena(true);
   if (B) stopAudio();
   useBand(k); view = null; B = null;
   const b = BANDS[k];
@@ -674,7 +705,93 @@ function showMenu() {
   });
   band = null;
 }
-$("changeBand").onclick = showMenu;
+$("changeBand").onclick = () => { closeBuilder(false); showMenu(); };
+
+// Build-your-own bracket: the user fills every first-round matchup for the current band.
+let draft = null;
+const B_SIZES = [4, 8, 16, 32, 64, 128];
+function showArena(show) {
+  ["setup", "bar", "keys", "bracketSec", "openBuilder"].forEach(id => $(id).hidden = !show);
+  if (!show) { $("play").hidden = true; $("winner").hidden = true; }
+  $("builder").hidden = show;
+}
+function openBuilder() {
+  stopAudio();
+  if (!draft || draft.band !== band) {
+    let size = 16; while (size > SONGS.length) size /= 2;
+    draft = { band, size, slots: Array(size).fill("") };
+  }
+  showArena(false); buildBuilder(); window.scrollTo(0, 0);
+}
+function closeBuilder(rerender = true) {
+  if ($("builder").hidden) return;
+  showArena(true); if (rerender) render();
+}
+function optionsHTML() {
+  return '<option value="">Pick a song…</option>' + ALBUMS.map(a =>
+    `<optgroup label="${esc(a.name)}${a.year === "misc" ? "" : " (" + a.year + ")"}">` +
+    SONGS.filter(s => s.aid === a.id).map(s => `<option value="${s.id}">${esc(s.title)}</option>`).join("") + "</optgroup>").join("");
+}
+function buildBuilder() {
+  $("bSizes").innerHTML = "";
+  B_SIZES.forEach(n => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.id = "bsize-" + n; b.textContent = n;
+    b.setAttribute("aria-pressed", draft.size === n);
+    b.disabled = n > SONGS.length;
+    b.onclick = () => {
+      if (draft.size === n) return;
+      draft.slots = draft.slots.slice(0, n).concat(Array(Math.max(0, n - draft.slots.length)).fill(""));
+      draft.size = n; buildBuilder();
+    };
+    $("bSizes").appendChild(b);
+  });
+  const opts = optionsHTML(), matches = draft.size / 2;
+  const perRegion = draft.size >= 16 ? matches / 4 : 0;
+  let html = "";
+  for (let m = 0; m < matches; m++) {
+    if (perRegion && m % perRegion === 0) html += `<div class="region-h">${esc(REGIONS[m / perRegion])} region</div>`;
+    html += `<div class="mrow"><span class="mlabel">Match ${m + 1}</span>
+      <select id="slot-${2 * m}" data-i="${2 * m}" aria-label="Match ${m + 1}, first song">${opts}</select>
+      <span class="mvs" aria-hidden="true">vs</span>
+      <select id="slot-${2 * m + 1}" data-i="${2 * m + 1}" aria-label="Match ${m + 1}, second song">${opts}</select></div>`;
+  }
+  $("bMatches").innerHTML = html;
+  $("bMatches").querySelectorAll("select").forEach(sel => { sel.value = draft.slots[+sel.dataset.i] || ""; });
+  syncBuilder();
+}
+// Mark songs already placed so each song can only be used once.
+function syncBuilder() {
+  const used = new Set(draft.slots.filter(Boolean));
+  $("bMatches").querySelectorAll("select").forEach(sel => {
+    const own = draft.slots[+sel.dataset.i];
+    sel.classList.toggle("filled", !!own);
+    for (const o of sel.options) if (o.value) o.disabled = used.has(o.value) && o.value !== own;
+  });
+  const filled = draft.slots.filter(Boolean).length;
+  $("bCount").innerHTML = `<strong>${filled}</strong> of ${draft.size} spots filled`;
+  $("bStart").disabled = filled < draft.size;
+  $("bFill").disabled = filled === draft.size;
+}
+$("bMatches").addEventListener("change", e => {
+  const sel = e.target.closest("select"); if (!sel) return;
+  draft.slots[+sel.dataset.i] = sel.value; syncBuilder();
+});
+$("bFill").onclick = () => {
+  const used = new Set(draft.slots.filter(Boolean));
+  const left = shuffle(SONGS.map(s => s.id).filter(id => !used.has(id)));
+  draft.slots = draft.slots.map(v => v || left.shift() || "");
+  buildBuilder();
+};
+$("bClear").onclick = () => { draft.slots = Array(draft.size).fill(""); buildBuilder(); };
+$("bCancel").onclick = () => closeBuilder();
+$("bStart").onclick = () => {
+  if (draft.slots.some(v => !v)) return;
+  S = { on: S.on, size: draft.size, seed: draft.slots.slice(), w: {}, hist: [], custom: true };
+  view = null; save(); draft = null;
+  closeBuilder(); window.scrollTo(0, 0);
+};
+$("openBuilder").onclick = openBuilder;
 showMenu();
 </script>
 </body>
