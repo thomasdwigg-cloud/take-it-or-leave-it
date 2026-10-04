@@ -115,6 +115,7 @@ kbd { font-family: var(--f-mono); font-size: 12px; border: 1px solid var(--line)
 .builder { display: grid; gap: 18px; }
 .builder-head h2 { margin: 0 0 4px; font-family: var(--f-marker); font-weight: 400; font-size: 1.9rem; }
 .builder-head p { margin: 0; color: var(--muted); max-width: 62ch; }
+.quick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .builder-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .builder-actions .count { margin-right: auto; }
 .btn.primary:disabled { opacity: .35; }
@@ -266,6 +267,16 @@ button.row:hover .t { color: var(--accent); }
       <p>Choose which songs face each other in the first round. Each song can only be used once. Fill every spot, then start.</p>
     </div>
     <div class="sizes"><span class="sizes-label">Songs in bracket</span><div class="albums" id="bSizes"></div></div>
+    <div class="quick">
+      <span class="sizes-label">Quick fill</span>
+      <div class="albums">
+        <button class="chip" id="qWorst" type="button">Your least favorite songs</button>
+        <button class="chip" id="qBest" type="button">Your favorite songs</button>
+        <button class="chip" id="qNew" type="button">Songs you haven't ranked yet</button>
+        <button class="chip" id="qRandom" type="button">Random songs</button>
+      </div>
+    </div>
+    <p class="setup-note" id="qNote" hidden></p>
     <div class="builder-actions">
       <span class="count" id="bCount"></span>
       <button class="btn" id="bFill" type="button">Fill empty spots randomly</button>
@@ -771,6 +782,7 @@ function openBuilder() {
     let size = 16; while (size > SONGS.length) size /= 2;
     draft = { band, size, slots: Array(size).fill("") };
   }
+  $("qNote").hidden = true;
   showArena(false); buildBuilder(); window.scrollTo(0, 0);
 }
 function closeBuilder(rerender = true) {
@@ -833,6 +845,38 @@ $("bFill").onclick = () => {
   draft.slots = draft.slots.map(v => v || left.shift() || "");
   buildBuilder();
 };
+// Quick fill: put a chosen set of songs into every spot, in random matchups.
+function quickFill(kind) {
+  const idOf = Object.fromEntries(SONGS.map(s => [s.title, s.id]));
+  const rows = leaderboardRows().filter(r => idOf[r.t]);
+  const ranked = new Set(rows.map(r => r.t));
+  const unranked = shuffle(SONGS.filter(s => !ranked.has(s.title)).map(s => s.id));
+  let picks = [], note = "";
+  if (kind === "worst" || kind === "best") {
+    const list = kind === "worst" ? rows.slice().reverse() : rows;
+    picks = list.slice(0, draft.size).map(r => idOf[r.t]);
+    const label = kind === "worst" ? "least favorite" : "favorite";
+    if (!rows.length) note = `You haven't finished any ${BANDS[band].name} brackets yet, so there's no ranking to use. Spots were filled with random songs. Finish a few brackets first.`;
+    else if (picks.length < draft.size) note = `Only ${picks.length} songs have been ranked so far, so the other ${draft.size - picks.length} spots are random songs you haven't ranked yet.`;
+    else note = `These are the ${draft.size} songs ranked ${kind === "worst" ? "lowest" : "highest"} on your leaderboard, put into random matchups. You can still change any of them.`;
+    picks = picks.concat(unranked).slice(0, draft.size);
+  } else if (kind === "new") {
+    picks = unranked.slice(0, draft.size);
+    if (picks.length < draft.size) {
+      note = `Only ${picks.length} songs haven't been ranked yet, so the rest are songs from your leaderboard.`;
+      picks = picks.concat(shuffle(rows.map(r => idOf[r.t]))).slice(0, draft.size);
+    } else note = "These songs haven't been in any of your finished brackets yet.";
+  } else {
+    picks = shuffle(SONGS.map(s => s.id)).slice(0, draft.size);
+  }
+  draft.slots = shuffle(picks).concat(Array(draft.size).fill("")).slice(0, draft.size);
+  $("qNote").textContent = note; $("qNote").hidden = !note;
+  buildBuilder();
+}
+$("qWorst").onclick = () => quickFill("worst");
+$("qBest").onclick = () => quickFill("best");
+$("qNew").onclick = () => quickFill("new");
+$("qRandom").onclick = () => quickFill("random");
 $("bClear").onclick = () => { draft.slots = Array(draft.size).fill(""); buildBuilder(); };
 $("bCancel").onclick = () => closeBuilder();
 $("bStart").onclick = () => {
@@ -858,10 +902,8 @@ function recordResult() {
 function removeRecord(id) { setHistory(getHistory().filter(h => h.id !== id)); }
 
 let showAll = false, confirmClear = false;
-function renderStats() {
-  const hist = getHistory().filter(h => h.band === band);
-  const albumOf = Object.fromEntries(SONGS.map(s => [s.title, s]));
-  // Leaderboard: titles, finals, average progress (how far through the bracket a song gets)
+// Leaderboard: titles, finals, average progress (how far through the bracket a song gets)
+function leaderboardRows(hist = getHistory().filter(h => h.band === band)) {
   const agg = {};
   hist.forEach(h => Object.entries(h.res).forEach(([t, won]) => {
     const a = agg[t] || (agg[t] = { t, played: 0, titles: 0, finals: 0, prog: 0 });
@@ -869,8 +911,13 @@ function renderStats() {
     if (won === h.R) a.titles++;
     if (won >= h.R - 1) a.finals++;
   }));
-  const rows = Object.values(agg).map(a => ({ ...a, avg: a.prog / a.played }))
+  return Object.values(agg).map(a => ({ ...a, avg: a.prog / a.played }))
     .sort((x, y) => y.titles - x.titles || y.avg - x.avg || y.finals - x.finals || y.played - x.played);
+}
+function renderStats() {
+  const hist = getHistory().filter(h => h.band === band);
+  const albumOf = Object.fromEntries(SONGS.map(s => [s.title, s]));
+  const rows = leaderboardRows(hist);
   $("statsNote").textContent = hist.length
     ? `Built from ${hist.length} finished bracket${hist.length > 1 ? "s" : ""} of ${BANDS[band].name} songs on this device. Ranked by titles won, then by how far a song usually gets.`
     : "";
